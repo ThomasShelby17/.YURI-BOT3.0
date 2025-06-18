@@ -1,0 +1,150 @@
+const fs = require('fs');
+const moment = require('moment-timezone');
+const { fetchJson, getFileBuffer, uploader } = require(`../../exports.js`);
+const paidhourspath = './arquivos/database/func/horarios/horarios.json';
+const { prepareWAMessageMedia } = require(`baileys`);
+const paidgrouplinkpath = `./arquivos/database/func/horarios/grouplink.json`
+
+const alerandom = (nmr) => {
+    return Math.floor(Math.random() * nmr);
+}
+
+const converterMin = (base_b) => {
+  if(Number(base_b) === 0) return `00:00`;
+  if(!Number(base_b)) return `Precisa ser um número`;
+  nmr = Number(base_b);
+  b = nmr % 60;
+  a = (nmr - b) / 60;
+  return `${a < 10 ? `0` + a : a}:${b < 10 ? `0` + b : b}`;
+};
+
+const sendHours = async(formato) => {
+    await moment.locale("pt")
+    return moment.tz('America/Sao_Paulo').format(formato);
+};
+
+const isJsonIncludes = async(json, value) => {
+    if(JSON.stringify(json).includes(value)) return true;
+    return false
+};
+
+const contarMin = (base_a) => {
+  if(contar(String(base_a), `:`) != 1) return `É necessário o uso dos : no horário, seguindo apenas horas e minutos`;
+  var [a, b] = base_a.split(':');
+  return Number(Number(a) * 60) + Number(b);
+};
+
+if(!fs.existsSync(paidhourspath)) {
+    fs.writeFileSync(paidhourspath, JSON.stringify([]));
+};
+
+const paidHours = JSON.parse(fs.readFileSync(paidhourspath));
+
+function savePaid() {
+    fs.writeFileSync(paidHours, JSON.stringify(paidhourspath, null, 2));
+};
+
+function addGroupInPaid(from) {
+    if(!isJsonIncludes(paidHours, from)) {
+        paidHours.push({groupId: from, start: true, fundoperso: false, url: ``, horarios: []});
+        savePaid();
+    };
+};
+
+const getGroupInPaid = (from) => {
+    AB = paidHours.map(i => i.groupId).indexOf(from);
+    return paidHours[AB];
+}
+
+const getIDinPaid = (from, idpaid) => {
+    horarios = getGroupInPaid(from).horarios
+    AB = horarios.map(i => i.id).indexOf(idpaid);
+    return horarios[AB];
+}
+
+const isIDinPaid = (from, idpaid) => {
+    horarios = getGroupInPaid(from).horarios;
+    AB = horarios.map(i => i.id).indexOf(idpaid)
+    return AB >= 0 ? true : false;
+}
+
+function addPaid(from, hm) {
+    addGroupInPaid(from);
+    horarios = getGroupInPaid(from).horarios;
+    nmr = Number(hm.slice(0, hm.length - 1));
+    ini = Number(hm.slice(0, hm.length - 1));
+    letra = hm.slice(hm.length - 1, hm.length).toLowerCase();
+    atual = sendHours(`HH:`) + (letra == `m` ? String(Number(sendHours(`mm`)) - (Number(sendHours(`mm`)) % 5)) : `00`);
+    multiplicador = nmr;
+    if(letra == `h`) multiplicador *= 60;
+    soma = contarMin(atual) + multiplicador;
+    if(soma >= 1440) {
+        sobra = soma % 1440;
+        dias = (soma - sobra) / 1440;
+    } else {
+        sobra = soma;
+        dias = 0;
+    }
+    horarios.push({id: sendHours(`DDMMHHmmss`), tempo: converterMin(sobra), dias: dias, save: sendHours(`DD`), nmr: ini, letra: letra});
+    savePaid();
+}
+
+function rmPaid(from, idpaid) {
+    horarios = getGroupInPaid(from).horarios;
+    AB = horarios.map(i => i.id).indexOf(idpaid);
+    horarios.splice(AB, 1);
+    savePaid();
+}
+
+if(!fs.existsSync(paidgrouplinkpath)) {
+    fs.writeFileSync(paidgrouplinkpath, JSON.stringify([]));
+};
+
+const groupLinkPaid = JSON.parse(fs.readFileSync(paidgrouplinkpath));
+
+function paidSGL() {
+    fs.writeFileSync(groupLinkPaid, JSON.stringify(paidgrouplinkpath, null, 2));
+}
+
+async function addGroupLinkInPaid(sabrina, from) {
+    if(!isJsonIncludes(groupLinkPaid, from)) {
+        try {
+            getftgp = await sabrina.profilePictureUrl(from, 'image')
+            upwapi = await prepareWAMessageMedia({image: {url: getftgp}}, {upload: sabrina.waUploadToServer})
+            getfile = await getFileBuffer(upwapi.imageMessage, `image`)
+            uptele = await new uploader().catbox(getfile);
+        } catch(e) {
+            return console.log(`Não foi possível salvar a foto do grupo ${from} - ${e}`)
+        }
+        groupLinkPaid.push({id: from, foto: uptele})
+        paidSGL()
+    }
+}
+
+function rmGroupLinkInPaid(from) {
+    AB = groupLinkPaid.map(i => i.id).indexOf(from)
+    if(AB >= 0) {
+        groupLinkPaid.splice(AB, 1)
+        paidSGL()
+    }
+}
+
+const getInfoPaidGroupLink = (from) => {
+    AB = groupLinkPaid.map(i => i.id).indexOf(from)
+    return groupLinkPaid[AB]
+}
+
+const getGroupLinkFromPaidID = (from) => {
+    data = getGroupInPaid(from)
+    if(isJsonIncludes(groupLinkPaid, from)) {
+        if(data.fundoperso) return data.url
+        return getInfoPaidGroupLink(from).foto
+    } else {
+        fotos = [
+            'https://telegra.ph/file/c4b8c2591806fcfcde654.jpg'
+        ]
+        return fotos[alerandom(fotos.length)]
+    }
+}
+
+module.exports = { paidHours, savePaid, addGroupInPaid, getGroupInPaid, getIDinPaid, addPaid, rmPaid, isIDinPaid, groupLinkPaid, paidSGL, addGroupLinkInPaid, getGroupLinkFromPaidID, getInfoPaidGroupLink, rmGroupLinkInPaid }
